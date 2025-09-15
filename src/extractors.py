@@ -17,16 +17,16 @@ except ImportError:
     DOCX_AVAILABLE = False
 
 try:
-    import pytesseract
     from PIL import Image
+    import pytesseract
 
     IMAGE_AVAILABLE = True
 except ImportError:
     IMAGE_AVAILABLE = False
 
 import json
-import re
 from pathlib import Path
+import re
 from typing import Any
 
 try:

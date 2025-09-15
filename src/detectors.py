@@ -120,7 +120,8 @@ class ContentDetector(FileTypeDetector):
 
     def __init__(self):
         self.code_patterns = [
-            r"\b(function|def|class|interface|struct|enum|import|require|module|package|namespace)\b",
+            r"\b(function|def|class|interface|struct|enum|import|require|"
+            r"module|package|namespace)\b",
             r"\b(if|else|elif|while|for|switch|case|break|continue|return)\b",
             r"\b(var|let|const|int|string|bool|float|double|char|void)\b",
             r"[{}();]",  # Common code symbols

@@ -3,8 +3,8 @@
 Basic test script for RenameWithLLM.
 """
 
-import tempfile
 from pathlib import Path
+import tempfile
 
 from src.detectors import ContentDetector, ExtensionDetector, MimeDetector
 from src.extractors import CodeExtractor, TextExtractor
