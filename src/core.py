@@ -3,8 +3,10 @@ Core interfaces and base classes for the AI file rename tool.
 """
 
 from abc import ABC, abstractmethod
+import ast
 from dataclasses import dataclass
 from enum import Enum
+import json
 from pathlib import Path
 from typing import Any
 
@@ -145,3 +147,39 @@ class SafetyChecker(ABC):
     def check_rename_safety(self, source: Path, target: Path) -> dict[str, Any]:
         """Check if rename operation is safe."""
         pass
+
+
+def format_api_error(error: Exception) -> str:
+    """Format OpenAI API errors in a readable way using rich."""
+    error_str = str(error)
+
+    # Try to extract and pretty-print JSON from the error
+    if "{" in error_str and "error" in error_str:
+        try:
+            # Extract the JSON part
+            json_start = error_str.find("{")
+            if json_start != -1:
+                json_part = error_str[json_start:]
+
+                # Parse the Python literal (handles single quotes, None, etc.)
+                try:
+                    error_data = ast.literal_eval(json_part)
+                except (ValueError, SyntaxError):
+                    # Fallback: convert single quotes to double quotes
+                    json_part = json_part.replace("'", '"').replace("None", "null")
+                    error_data = json.loads(json_part)
+
+                # Use rich's built-in JSON formatting
+                from rich.console import Console
+
+                console = Console()
+                with console.capture() as capture:
+                    console.print_json(json.dumps(error_data))
+                pretty_json = capture.get()
+                error_str = error_str[:json_start] + "\n" + pretty_json
+
+        except (json.JSONDecodeError, ValueError, SyntaxError):
+            # If all parsing fails, return original error
+            pass
+
+    return error_str

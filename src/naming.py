@@ -6,7 +6,13 @@ import re
 
 import openai
 
-from .core import CaseFormatter, FileAnalysis, NamingEngine, NamingResult
+from .core import (
+    CaseFormatter,
+    FileAnalysis,
+    NamingEngine,
+    NamingResult,
+    format_api_error,
+)
 
 
 class OpenAINamingEngine(NamingEngine):
@@ -70,9 +76,10 @@ class OpenAINamingEngine(NamingEngine):
                 tokens_used=input_tokens + output_tokens,
             )
 
-        except Exception:
-            # Fallback to basic naming
-            return self._fallback_naming(analysis, count, case_format)
+        except Exception as e:
+            # Format the error nicely before re-raising
+            formatted_error = format_api_error(e)
+            raise Exception(formatted_error) from e
 
     def _prepare_content(self, analysis: FileAnalysis) -> str:
         """Prepare content for AI analysis."""
@@ -192,26 +199,6 @@ Return format:
 
         input_cost, output_cost = costs.get(self.model, (0.00015, 0.0006))
         return (input_tokens * input_cost + output_tokens * output_cost) / 1000
-
-    def _fallback_naming(
-        self, analysis: FileAnalysis, count: int, case_format: str
-    ) -> NamingResult:
-        """Fallback naming when AI fails."""
-        base_name = analysis.file_path.stem
-        suggestions = []
-
-        for i in range(count):
-            suggestion = f"{base_name}_v{i + 1}"
-            formatted = self.case_formatter.format(suggestion, case_format)
-            suggestions.append(formatted)
-
-        return NamingResult(
-            suggestions=suggestions,
-            summary="Fallback naming due to API error",
-            confidence=0.3,
-            cost=0.0,
-            tokens_used=0,
-        )
 
 
 class CaseFormatterImpl(CaseFormatter):

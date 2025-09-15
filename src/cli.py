@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, IntPrompt
 
-from .core import Config, FileAnalysis
+from .core import Config, FileAnalysis, format_api_error
 from .detectors import (
     CompositeDetector,
     ContentDetector,
@@ -97,6 +97,24 @@ class AIRenameTool:
             )
 
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+        # Validate API key by making a test call
+        try:
+            import openai
+
+            client = openai.OpenAI(api_key=api_key)
+            # Make a minimal test call to validate the key
+            client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+            )
+        except Exception as e:
+            formatted_error = format_api_error(e)
+            raise click.ClickException(
+                f"Invalid OpenAI API key: {formatted_error}"
+            ) from e
+
         return OpenAINamingEngine(api_key, model)
 
     def _setup_safety_checker(self) -> FileSafetyChecker:
@@ -173,6 +191,8 @@ class AIRenameTool:
 
     def display_results(self, results: list[dict[str, Any]], include_summary: bool):
         """Display processing results."""
+        successful_results = [r for r in results if r["success"]]
+
         for result in results:
             if not result["success"]:
                 console.print(
@@ -196,9 +216,10 @@ class AIRenameTool:
             if include_summary and naming_result.summary:
                 console.print(f"\n[dim]Summary: {naming_result.summary}[/dim]")
 
-            # Display cost info
-            if naming_result.cost > 0:
-                console.print(f"[dim]Cost: ${naming_result.cost:.6f}[/dim]")
+        # Display total cost at the end
+        if successful_results:
+            total_cost = sum(r["naming_result"].cost for r in successful_results)
+            console.print(f"\n[bold]Total estimated cost: ${total_cost:.6f}[/bold]")
 
 
 @click.command()
@@ -290,10 +311,6 @@ def _handle_renaming(
     if not successful_results:
         console.print("[red]No files to rename[/red]")
         return
-
-    # Show cost summary
-    total_cost = sum(r["naming_result"].cost for r in successful_results)
-    console.print(f"\n[bold]Total estimated cost: ${total_cost:.6f}[/bold]")
 
     # Confirm before proceeding
     if not Confirm.ask("Proceed with renaming?"):
