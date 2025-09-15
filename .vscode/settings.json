@@ -1,0 +1,45 @@
+{
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.languageServer": "None",
+    "python.analysis.diagnosticMode": "workspace",
+    "ruff.enable": true,
+    "ruff.nativeServer": "on",
+    "ruff.lineLength": 88,
+    "flake8.enabled": false,
+    "mypy-type-checker.reportingScope": "workspace",
+    "editor.rulers": [
+        88
+    ],
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    },
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.rulers": [
+            88
+        ],
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+        }
+    },
+    "[yaml]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    },
+    "[json]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    },
+    "[markdown]": {
+        "editor.rulers": [],
+        "editor.wordWrap": "on"
+    }
+}

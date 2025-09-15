@@ -1,0 +1,94 @@
+# RenameWithLLM Configuration
+
+# File type detection settings
+file_types:
+  pdf:
+    detectors: [mime_detector, signature_detector]
+    extractors: [pdf_extractor]
+    max_tokens: 200
+    cost_weight: 1.0
+
+  docx:
+    detectors: [mime_detector, signature_detector]
+    extractors: [docx_extractor]
+    max_tokens: 200
+    cost_weight: 1.0
+
+  code:
+    detectors: [mime_detector, content_detector]
+    extractors: [code_extractor, text_extractor]
+    max_tokens: 300
+    cost_weight: 0.8
+
+  text:
+    detectors: [mime_detector, content_detector]
+    extractors: [text_extractor]
+    max_tokens: 250
+    cost_weight: 0.6
+
+  image:
+    detectors: [mime_detector, signature_detector]
+    extractors: [image_extractor]
+    max_tokens: 150
+    cost_weight: 0.4
+
+  unknown:
+    detectors: [content_detector, fallback_detector]
+    extractors: [fallback_extractor]
+    max_tokens: 100
+    cost_weight: 0.2
+
+# Content extraction strategies
+extraction:
+  strategies:
+    - name: "first_page"
+      max_chars: 1000
+      priority: 1
+    - name: "headings_only"
+      max_chars: 500
+      priority: 2
+    - name: "metadata_only"
+      max_chars: 200
+      priority: 3
+    - name: "filename_only"
+      max_chars: 50
+      priority: 4
+
+# Cost management
+cost_management:
+  target_cost_per_file: 0.05
+  model_costs:
+    gpt-4o-mini: 0.00015
+    gpt-3.5-turbo: 0.0015
+    gpt-4: 0.03
+
+  # Token limits per model
+  token_limits:
+    gpt-4o-mini: 200
+    gpt-3.5-turbo: 300
+    gpt-4: 500
+
+# Naming settings
+naming:
+  default_count: 3
+  max_count: 10
+  default_case: "snake_case"
+  max_length: 50
+
+  # Case formats
+  case_formats:
+    snake_case: "snake_case"
+    Title Case: "Title Case"
+    camelCase: "camelCase"
+    kebab-case: "kebab-case"
+    UPPER_CASE: "UPPER_CASE"
+    lower case: "lower case"
+    no caps: "no caps"
+    PascalCase: "PascalCase"
+
+# Safety settings
+safety:
+  prevent_overwrites: true
+  create_backups: false
+  confirm_renames: true
+  dry_run_default: false
