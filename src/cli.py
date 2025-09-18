@@ -1,5 +1,6 @@
 """Command-line interface for the AI file rename tool."""
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Any
@@ -7,8 +8,7 @@ from typing import Any
 import click
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Confirm, IntPrompt
+from rich.prompt import IntPrompt
 
 from .constants import (
     CASE_FORMATS,
@@ -18,10 +18,13 @@ from .constants import (
     DEFAULT_MODEL,
     ENV_OPENAI_API_KEY,
     ENV_OPENAI_MODEL,
-    MAX_CHARS_DEFAULT,
+    MAX_CONTENT_EXTRACTION_LENGTH,
+    MAX_FILENAME_LENGTH,
     OPENAI_MODELS,
+    TOKENS_FOR_SUMMARY,
+    TOKENS_PER_SUGGESTION,
 )
-from .core import Config, FileAnalysis, format_api_error
+from .core import Config, FileAnalysis
 from .detectors import (
     CompositeDetector,
     ContentDetector,
@@ -50,8 +53,16 @@ console = Console()
 class AIRenameTool:
     """Main AI rename tool class."""
 
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(
+        self,
+        config_path: str = "config.yaml",
+        verbose: bool = False,
+        max_chars: int = 50,
+    ):
         self.config = self._load_config(config_path)
+        self.verbose = verbose
+        self.max_chars = max_chars
+
         self.detector = self._setup_detector()
         self.extractor = self._setup_extractor()
         self.naming_engine = self._setup_naming_engine()
@@ -75,7 +86,7 @@ class AIRenameTool:
             file_types={},
             extraction={},
             cost_management={"target_cost_per_file": 0.05},
-            naming={"default_count": 3, "default_case": "snake_case"},
+            naming={"default_count": 3, "default_case": DEFAULT_CASE},
             safety={"prevent_overwrites": True, "confirm_renames": True},
         )
 
@@ -110,25 +121,7 @@ class AIRenameTool:
             )
 
         model = os.getenv(ENV_OPENAI_MODEL, DEFAULT_MODEL)
-
-        # Validate API key by making a test call
-        try:
-            import openai
-
-            client = openai.OpenAI(api_key=api_key)
-            # Make a minimal test call to validate the key
-            client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=1,
-            )
-        except Exception as e:
-            formatted_error = format_api_error(e)
-            raise click.ClickException(
-                f"Invalid OpenAI API key: {formatted_error}"
-            ) from e
-
-        return OpenAINamingEngine(api_key, model)
+        return OpenAINamingEngine(api_key, model, self.verbose)
 
     def _setup_safety_checker(self) -> FileSafetyChecker:
         """Setup safety checker."""
@@ -142,7 +135,8 @@ class AIRenameTool:
 
         # Extract content
         content = self.extractor.extract(
-            file_path, {"file_type": file_type, "max_chars": MAX_CHARS_DEFAULT}
+            file_path,
+            {"file_type": file_type, "max_chars": MAX_CONTENT_EXTRACTION_LENGTH},
         )
 
         # Get file stats
@@ -156,7 +150,7 @@ class AIRenameTool:
             modified_time=stat.st_mtime,
         )
 
-    def process_files(
+    async def process_files(
         self,
         file_paths: list[Path],
         count: int,
@@ -164,47 +158,55 @@ class AIRenameTool:
         include_summary: bool,
         dry_run: bool,
     ) -> list[dict[str, Any]]:
-        """Process multiple files."""
-        results = []
+        """Process multiple files asynchronously for better performance."""
+        import asyncio
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Processing files...", total=len(file_paths))
+        async def process_single_file(file_path: Path) -> dict[str, Any]:
+            """Process a single file asynchronously."""
+            try:
+                # Analyze file
+                analysis = self.analyze_file(file_path)
 
-            for file_path in file_paths:
-                try:
-                    # Analyze file
-                    analysis = self.analyze_file(file_path)
+                # Generate names asynchronously
+                naming_result = await self.naming_engine.generate_names(
+                    analysis, count, case_format, include_summary, self.max_chars
+                )
 
-                    # Generate names
-                    naming_result = self.naming_engine.generate_names(
-                        analysis, count, case_format, include_summary
-                    )
+                return {
+                    "file_path": file_path,
+                    "analysis": analysis,
+                    "naming_result": naming_result,
+                    "success": True,
+                }
+            except Exception as e:
+                return {
+                    "file_path": file_path,
+                    "error": str(e),
+                    "success": False,
+                }
 
-                    results.append(
-                        {
-                            "file_path": file_path,
-                            "analysis": analysis,
-                            "naming_result": naming_result,
-                            "success": True,
-                        }
-                    )
+        # Process all files concurrently
+        tasks = [process_single_file(file_path) for file_path in file_paths]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                except Exception as e:
-                    results.append(
-                        {"file_path": file_path, "error": str(e), "success": False}
-                    )
+        # Handle any exceptions that weren't caught
+        processed_results: list[dict[str, Any]] = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                processed_results.append(
+                    {
+                        "file_path": file_paths[i],
+                        "error": str(result),
+                        "success": False,
+                    }
+                )
+            elif isinstance(result, dict):
+                processed_results.append(result)
 
-                progress.advance(task)
-
-        return results
+        return processed_results
 
     def display_results(self, results: list[dict[str, Any]], include_summary: bool):
         """Display processing results."""
-        successful_results = [r for r in results if r["success"]]
 
         for result in results:
             if not result["success"]:
@@ -222,29 +224,125 @@ class AIRenameTool:
 
             # Display suggestions
             console.print("Suggestions:")
+            original_extension = file_path.suffix
             for i, suggestion in enumerate(naming_result.suggestions, 1):
-                console.print(f"  {i}. {suggestion}")
+                suggestion_with_extension = f"{suggestion}{original_extension}"
+                console.print(
+                    f"  [bold cyan]{i}.[/bold cyan] {suggestion_with_extension}",
+                    highlight=False,
+                )
 
             # Display summary if requested
             if include_summary and naming_result.summary:
                 console.print(f"\n[dim]Summary: {naming_result.summary}[/dim]")
 
-        # Display total cost at the end
-        if successful_results:
-            total_cost = sum(r["naming_result"].cost for r in successful_results)
-            console.print(f"\n[bold]Total estimated cost: ${total_cost:.6f}[/bold]")
+    def display_and_choose(
+        self,
+        results: list[dict[str, Any]],
+        include_summary: bool,
+        dry_run: bool,
+        date_prefix: bool,
+    ):
+        """Display results and let user choose filenames immediately."""
+        successful_results = [r for r in results if r["success"]]
+
+        if not successful_results:
+            console.print("[red]No files to rename[/red]")
+            return
+
+        # Process each file immediately
+        for result in successful_results:
+            file_path = result["file_path"]
+            naming_result = result["naming_result"]
+
+            # Display file info
+            console.print(f"\n[bold]File: {file_path.name}[/bold]")
+
+            # Display suggestions
+            console.print("Suggestions:")
+            original_extension = file_path.suffix
+            console.print(
+                f"  [bold cyan]0.[/bold cyan] {file_path.name} (keep current)",
+                highlight=False,
+            )
+            for i, suggestion in enumerate(naming_result.suggestions, 1):
+                suggestion_with_extension = f"{suggestion}{original_extension}"
+                console.print(
+                    f"  [bold cyan]{i}.[/bold cyan] {suggestion_with_extension}",
+                    highlight=False,
+                )
+
+            # Display summary if requested
+            if include_summary and naming_result.summary:
+                console.print(f"\n[dim]Summary: {naming_result.summary}[/dim]")
+
+            # Ask for choice immediately
+            if not dry_run:
+                choice = IntPrompt.ask(
+                    f"Choose filename for {file_path.name} "
+                    f"(0-{len(naming_result.suggestions)})",
+                    default=0,
+                )
+
+                if choice == 0:
+                    # Keep current filename - no action needed
+                    console.print(
+                        f"[yellow]Keeping current filename: {file_path.name}[/yellow]"
+                    )
+                elif 1 <= choice <= len(naming_result.suggestions):
+                    new_name = naming_result.suggestions[choice - 1]
+
+                    # Add date prefix if requested
+                    if date_prefix:
+                        from datetime import datetime
+
+                        date_str = datetime.now().strftime("%Y-%m-%d")
+                        new_name = f"{date_str}_{new_name}"
+
+                    # Preserve the original file extension
+                    new_name_with_extension = f"{new_name}{original_extension}"
+
+                    # Create target path
+                    target_path = file_path.parent / new_name_with_extension
+
+                    # Check safety
+                    safety_result = self.safety_checker.check_rename_safety(
+                        file_path, target_path
+                    )
+
+                    if not safety_result["safe"]:
+                        console.print(
+                            f"[red]Cannot rename {file_path.name}: "
+                            f"{safety_result['errors'][0]}[/red]"
+                        )
+                        continue
+
+                    # Perform rename
+                    try:
+                        file_path.rename(target_path)
+                        console.print(
+                            f"[green]Renamed: {file_path.name} → "
+                            f"{new_name_with_extension}[/green]"
+                        )
+                    except Exception as e:
+                        console.print(
+                            f"[red]Failed to rename {file_path.name}: {e}[/red]"
+                        )
 
 
-@click.command()
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("files", nargs=-1, type=click.Path(exists=True))
 @click.option(
-    "--count", "-c", default=DEFAULT_COUNT, help="Number of filename suggestions"
+    "--count",
+    "-c",
+    default=DEFAULT_COUNT,
+    help=f"Number of filename suggestions [default: {DEFAULT_COUNT}]",
 )
 @click.option(
     "--case",
     default=DEFAULT_CASE,
     type=click.Choice(CASE_FORMATS),
-    help="Case format for filenames",
+    help=f"Case format for filenames [default: {DEFAULT_CASE}]",
 )
 @click.option("--summary", "-s", is_flag=True, help="Include file summary")
 @click.option("--dry-run", "-d", is_flag=True, help="Preview without renaming")
@@ -252,21 +350,33 @@ class AIRenameTool:
     "--model",
     default=DEFAULT_MODEL,
     type=click.Choice(list(OPENAI_MODELS.values())),
-    help="OpenAI model to use",
+    help=f"OpenAI model to use [default: {DEFAULT_MODEL}]",
 )
 @click.option("--date-prefix", is_flag=True, help="Add date prefix to filenames")
-@click.option("--config", default=DEFAULT_CONFIG_FILE, help="Configuration file path")
-def main(files, count, case, summary, dry_run, model, date_prefix, config):
+@click.option("--verbose", "-v", is_flag=True, help="Show the prompt sent to OpenAI")
+@click.option(
+    "--max-chars",
+    default=MAX_FILENAME_LENGTH,
+    type=int,
+    help=(
+        f"Maximum characters for filename suggestions [default: {MAX_FILENAME_LENGTH}]"
+    ),
+)
+@click.option(
+    "--config",
+    default=DEFAULT_CONFIG_FILE,
+    help=f"Configuration file path [default: {DEFAULT_CONFIG_FILE}]",
+)
+def main(
+    files, count, case, summary, dry_run, model, date_prefix, verbose, max_chars, config
+):
     """AI-powered file renaming tool with content analysis."""
 
     # Set model environment variable
     os.environ["OPENAI_MODEL"] = model
 
     try:
-        # Initialize tool
-        tool = AIRenameTool(config)
-
-        # Collect files
+        # Collect files first (before expensive initialization)
         file_paths = []
         for file_path in files:
             path = Path(file_path)
@@ -280,6 +390,9 @@ def main(files, count, case, summary, dry_run, model, date_prefix, config):
             console.print("[red]No files found to process[/red]")
             return
 
+        # Initialize tool only if we have files to process
+        tool = AIRenameTool(config, verbose=verbose, max_chars=max_chars)
+
         # Process all files - let MIME type detection handle file type identification
         # This allows support for any file type that our detectors can identify
         filtered_files = file_paths
@@ -288,15 +401,45 @@ def main(files, count, case, summary, dry_run, model, date_prefix, config):
             console.print("[red]No files found to process[/red]")
             return
 
-        # Process files
-        results = tool.process_files(filtered_files, count, case, summary, dry_run)
+        # Calculate and display cost estimate
+        console.print("[yellow]Calculating cost estimate...[/yellow]")
+        estimated_cost = 0.0
+        for _ in filtered_files:
+            # Estimate input tokens based on content length (roughly 4 chars per token)
+            # We extract up to MAX_CONTENT_EXTRACTION_LENGTH chars, so estimate
+            input_tokens = MAX_CONTENT_EXTRACTION_LENGTH // 4
+            output_tokens = count * TOKENS_PER_SUGGESTION + (
+                TOKENS_FOR_SUMMARY if summary else 0
+            )
 
-        # Display results
-        tool.display_results(results, summary)
+            # Use the same pricing as the naming engine
+            from .constants import MODEL_PRICING, OPENAI_MODELS
 
-        # Handle renaming if not dry run
-        if not dry_run:
-            _handle_renaming(results, tool.safety_checker, date_prefix)
+            model = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
+            input_cost, output_cost = MODEL_PRICING.get(
+                model, MODEL_PRICING[OPENAI_MODELS["GPT_4_1_NANO"]]
+            )
+            cost = (input_tokens * input_cost + output_tokens * output_cost) / 1000
+            estimated_cost += cost
+
+        console.print(f"[bold]Estimated cost: ${estimated_cost:.4f} USD[/bold]")
+        # Ask for confirmation before proceeding
+        from rich.prompt import Confirm
+
+        mode_text = "dry-run preview" if dry_run else "processing"
+        if not Confirm.ask(f"Proceed with {mode_text}?", default=True):
+            console.print("Operation cancelled")
+            return
+
+        # Process files asynchronously for better performance
+        console.print("[yellow]Sending data to OpenAI...[/yellow]")
+        results = asyncio.run(
+            tool.process_files(filtered_files, count, case, summary, dry_run)
+        )
+
+        # Display results and handle renaming immediately
+        console.print("[green]✓ Processing complete![/green]")
+        tool.display_and_choose(results, summary, dry_run, date_prefix)
 
     except click.ClickException:
         # Re-raise click exceptions without modification
@@ -304,61 +447,3 @@ def main(files, count, case, summary, dry_run, model, date_prefix, config):
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise click.ClickException(str(e)) from e
-
-
-def _handle_renaming(
-    results: list[dict[str, Any]], safety_checker: FileSafetyChecker, date_prefix: bool
-):
-    """Handle the actual renaming process."""
-    successful_results = [r for r in results if r["success"]]
-
-    if not successful_results:
-        console.print("[red]No files to rename[/red]")
-        return
-
-    # Confirm before proceeding
-    if not Confirm.ask("Proceed with renaming?"):
-        console.print("Operation cancelled")
-        return
-
-    # Process each file
-    for result in successful_results:
-        file_path = result["file_path"]
-        naming_result = result["naming_result"]
-
-        # Let user choose suggestion
-        choice = IntPrompt.ask(
-            f"Choose filename for {file_path.name} "
-            f"(1-{len(naming_result.suggestions)})",
-            default=1,
-        )
-
-        if 1 <= choice <= len(naming_result.suggestions):
-            new_name = naming_result.suggestions[choice - 1]
-
-            # Add date prefix if requested
-            if date_prefix:
-                from datetime import datetime
-
-                date_str = datetime.now().strftime("%Y-%m-%d")
-                new_name = f"{date_str}_{new_name}"
-
-            # Create target path
-            target_path = file_path.parent / new_name
-
-            # Check safety
-            safety_result = safety_checker.check_rename_safety(file_path, target_path)
-
-            if not safety_result["safe"]:
-                console.print(
-                    f"[red]Cannot rename {file_path.name}: "
-                    f"{safety_result['errors'][0]}[/red]"
-                )
-                continue
-
-            # Perform rename
-            try:
-                file_path.rename(target_path)
-                console.print(f"[green]Renamed: {file_path.name} → {new_name}[/green]")
-            except Exception as e:
-                console.print(f"[red]Failed to rename {file_path.name}: {e}[/red]")

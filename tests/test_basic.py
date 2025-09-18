@@ -98,22 +98,21 @@ def test_basic_functionality():
         test_extractors()
         test_case_formatter()
         print("\n✅ Basic functionality tests passed!")
-        return True
     except Exception as e:
         print(f"\n❌ Basic functionality test failed: {e}")
-        return False
+        raise
 
 
 if __name__ == "__main__":
     print("AI File Rename Tool - Basic Tests")
     print("=" * 40)
 
-    success = test_basic_functionality()
-
-    if success:
+    try:
+        test_basic_functionality()
         print("\n🎉 All basic tests passed! The tool structure is working.")
         print("\nTo test with OpenAI API:")
         print("1. Set OPENAI_API_KEY environment variable")
         print("2. Run: python main.py test.txt")
-    else:
+    except Exception:
         print("\n💥 Some tests failed. Check the error messages above.")
+        exit(1)

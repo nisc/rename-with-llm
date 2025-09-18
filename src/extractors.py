@@ -34,7 +34,7 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
-from .constants import MAX_CHARS_DEFAULT
+from .constants import MAX_CONTENT_EXTRACTION_LENGTH
 from .core import Content, ContentExtractor, FileType
 
 
@@ -71,7 +71,7 @@ class PDFExtractor(ContentExtractor):
                 page_count = len(reader.pages)
 
                 # Limit content based on config
-                max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
+                max_chars = config.get("max_chars", MAX_CONTENT_EXTRACTION_LENGTH)
                 content_text = first_page[:max_chars]
 
                 return Content(
@@ -123,8 +123,8 @@ class DOCXExtractor(ContentExtractor):
                 if p.style and p.style.name and p.style.name.startswith("Heading")
             ]
 
-            # Extract first few paragraphs
-            content_paragraphs = [p.text for p in doc.paragraphs[:5]]
+            # Extract all paragraphs (let max_chars limit the content)
+            content_paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
             content_text = "\n".join(content_paragraphs)
 
             # Extract metadata
@@ -137,7 +137,7 @@ class DOCXExtractor(ContentExtractor):
             }
 
             # Limit content based on config
-            max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
+            max_chars = config.get("max_chars", MAX_CONTENT_EXTRACTION_LENGTH)
             content_text = content_text[:max_chars]
 
             return Content(
@@ -190,7 +190,7 @@ class CodeExtractor(ContentExtractor):
                 summary_parts.append(f"Comments: {comments[0][:100]}...")
 
             # Limit content based on config
-            max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
+            max_chars = config.get("max_chars", MAX_CONTENT_EXTRACTION_LENGTH)
             content_text = content[:max_chars]
 
             return Content(
@@ -346,7 +346,7 @@ class TextExtractor(ContentExtractor):
             metadata = self._extract_metadata(content, specific_type)
 
             # Limit content based on config
-            max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
+            max_chars = config.get("max_chars", MAX_CONTENT_EXTRACTION_LENGTH)
             content_text = content[:max_chars]
 
             return Content(

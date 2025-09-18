@@ -103,14 +103,17 @@ class SignatureDetector(FileTypeDetector):
                 header = f.read(512)
                 for signature, file_type in self.signatures.items():
                     if header.startswith(signature):
+                        self._last_match = True
                         return file_type
+            self._last_match = False
             return FileType.UNKNOWN
         except Exception:
+            self._last_match = False
             return FileType.UNKNOWN
 
     def get_confidence(self) -> float:
         """Signature detection is very reliable when it matches."""
-        return 0.95
+        return 0.95 if getattr(self, "_last_match", False) else 0.1
 
 
 class ContentDetector(FileTypeDetector):

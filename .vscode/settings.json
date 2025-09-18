@@ -1,10 +1,9 @@
 {
     "python.defaultInterpreterPath": "./.venv/bin/python",
-    "python.languageServer": "None",
+    "python.languageServer": "Pylance",
     "python.analysis.diagnosticMode": "workspace",
     "ruff.enable": true,
     "ruff.nativeServer": "on",
-    "ruff.lineLength": 88,
     "flake8.enabled": false,
     "mypy-type-checker.reportingScope": "workspace",
     "editor.rulers": [
@@ -12,6 +11,7 @@
     ],
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
         "source.organizeImports": "explicit"
     },
     "files.trimTrailingWhitespace": true,

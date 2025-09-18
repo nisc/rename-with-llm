@@ -26,8 +26,8 @@ ENV_CONFIG_FILE = "CONFIG_FILE"
 
 # Default values
 DEFAULT_CONFIG_FILE = "config.yaml"
-DEFAULT_COUNT = 3
-DEFAULT_CASE = "snake_case"
+DEFAULT_COUNT = 5
+DEFAULT_CASE = "Title Case"
 
 # Case formats
 CASE_FORMATS = [
@@ -41,6 +41,21 @@ CASE_FORMATS = [
     "PascalCase",
 ]
 
+# Individual case format constants
+CASE_SNAKE = "snake_case"
+CASE_TITLE = "Title Case"
+CASE_CAMEL = "camelCase"
+CASE_KEBAB = "kebab-case"
+CASE_UPPER = "UPPER_CASE"
+CASE_LOWER = "lower case"
+CASE_NO_CAPS = "no caps"
+CASE_PASCAL = "PascalCase"
+
 # File type limits
-MAX_CHARS_DEFAULT = 1000
 MAX_FILENAME_LENGTH = 50
+MAX_CONTENT_EXTRACTION_LENGTH = 5000
+
+# Token estimation constants
+DEFAULT_INPUT_TOKENS_ESTIMATE = 100  # Conservative estimate for cost calculation
+TOKENS_PER_SUGGESTION = 20
+TOKENS_FOR_SUMMARY = 50

@@ -4,7 +4,20 @@ import re
 
 import openai
 
-from .constants import DEFAULT_MODEL, MODEL_PRICING, OPENAI_MODELS
+from .constants import (
+    CASE_CAMEL,
+    CASE_KEBAB,
+    CASE_LOWER,
+    CASE_NO_CAPS,
+    CASE_PASCAL,
+    CASE_SNAKE,
+    CASE_TITLE,
+    CASE_UPPER,
+    DEFAULT_MODEL,
+    MAX_FILENAME_LENGTH,
+    MODEL_PRICING,
+    OPENAI_MODELS,
+)
 from .core import (
     CaseFormatter,
     FileAnalysis,
@@ -17,44 +30,70 @@ from .core import (
 class OpenAINamingEngine(NamingEngine):
     """OpenAI-based naming engine."""
 
-    def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
+    def __init__(self, api_key: str, model: str = DEFAULT_MODEL, verbose: bool = False):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
+        self.verbose = verbose
         self.case_formatter = CaseFormatterImpl()
 
-    def generate_names(
+    async def generate_names(
         self,
         analysis: FileAnalysis,
         count: int,
         case_format: str,
         include_summary: bool,
+        max_chars: int = MAX_FILENAME_LENGTH,
     ) -> NamingResult:
-        """Generate filename suggestions using OpenAI."""
+        """Generate filename suggestions using OpenAI asynchronously."""
         try:
             # Prepare content for AI
             content = self._prepare_content(analysis)
 
             # Create prompt
             prompt = self._create_prompt(
-                content, analysis.file_path.name, count, case_format, include_summary
+                content,
+                analysis.file_path.name,
+                count,
+                case_format,
+                include_summary,
+                max_chars,
             )
+
+            # Output prompt if verbose mode is enabled
+            if self.verbose:
+                print("\n" + "=" * 80)
+                print("PROMPT SENT TO OPENAI:")
+                print("=" * 80)
+                print(prompt)
+                print("=" * 80 + "\n")
 
             # Calculate token usage
             input_tokens = len(prompt.split())  # Rough estimation
             output_tokens = count * 20 + (50 if include_summary else 0)
 
-            # Make API call
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=output_tokens,
-                temperature=0.7,
-            )
+            # Make async API call using asyncio.to_thread for non-async client
+            import asyncio
 
-            # Parse response
-            response_content: str | None = response.choices[0].message.content
-            if response_content is None:
-                return NamingResult(suggestions=[], summary="No response from AI")
+            def make_api_call():
+                return self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=output_tokens,
+                    temperature=0.7,
+                )
+
+            response = await asyncio.to_thread(make_api_call)
+
+            # Extract response content
+            response_content = response.choices[0].message.content or ""
+
+            # Output response if verbose mode is enabled
+            if self.verbose:
+                print("OPENAI RESPONSE:")
+                print("=" * 80)
+                print(response_content)
+                print("=" * 80 + "\n")
+
             suggestions, summary = self._parse_response(
                 response_content, include_summary
             )
@@ -112,23 +151,22 @@ class OpenAINamingEngine(NamingEngine):
         count: int,
         case_format: str,
         include_summary: bool,
+        max_chars: int,
     ) -> str:
         """Create prompt for OpenAI."""
-        case_instruction = self._get_case_instruction(case_format)
 
         prompt = f"""Analyze this file and suggest {count} descriptive filenames.
 
 {content}
 
 Current filename: {current_name}
-Format: {case_instruction}
-Max length: 50 characters
 
 Suggest {count} filenames that are:
 - Descriptive of the main content
 - Professional and clear
-- Under 50 characters
-- Use {case_format} format
+- Vary in length: include some short names (10-20 chars), some medium
+  (20-{max_chars // 2} chars), and some longer names
+  ({max_chars // 2}-{max_chars} chars)
 
 Return format:
 1. filename1
@@ -142,20 +180,6 @@ Return format:
             )
 
         return prompt
-
-    def _get_case_instruction(self, case_format: str) -> str:
-        """Get case formatting instruction."""
-        instructions = {
-            "snake_case": "snake_case, <50 chars, descriptive",
-            "Title Case": "Title Case, <50 chars, descriptive",
-            "camelCase": "camelCase, <50 chars, descriptive",
-            "kebab-case": "kebab-case, <50 chars, descriptive",
-            "UPPER_CASE": "UPPER_CASE, <50 chars, descriptive",
-            "lower case": "lower case, <50 chars, descriptive",
-            "no caps": "no caps, <50 chars, descriptive",
-            "PascalCase": "PascalCase, <50 chars, descriptive",
-        }
-        return instructions.get(case_format, "snake_case, <50 chars, descriptive")
 
     def _parse_response(
         self, response: str, include_summary: bool
@@ -205,14 +229,14 @@ class CaseFormatterImpl(CaseFormatter):
         text = self._clean_text(text)
 
         formatters = {
-            "snake_case": self._to_snake_case,
-            "Title Case": self._to_title_case,
-            "camelCase": self._to_camel_case,
-            "kebab-case": self._to_kebab_case,
-            "UPPER_CASE": self._to_upper_case,
-            "lower case": self._to_lower_case,
-            "no caps": self._to_no_caps,
-            "PascalCase": self._to_pascal_case,
+            CASE_SNAKE: self._to_snake_case,
+            CASE_TITLE: self._to_title_case,
+            CASE_CAMEL: self._to_camel_case,
+            CASE_KEBAB: self._to_kebab_case,
+            CASE_UPPER: self._to_upper_case,
+            CASE_LOWER: self._to_lower_case,
+            CASE_NO_CAPS: self._to_no_caps,
+            CASE_PASCAL: self._to_pascal_case,
         }
 
         formatter = formatters.get(case_type, self._to_snake_case)
@@ -239,8 +263,36 @@ class CaseFormatterImpl(CaseFormatter):
         return text.lower()
 
     def _to_title_case(self, text: str) -> str:
-        """Convert to Title Case."""
-        return " ".join(word.capitalize() for word in text.split())
+        """Convert to Title Case with simple abbreviation handling."""
+        # Convert underscores to spaces first for proper Title Case
+        text = text.replace("_", " ")
+
+        # First, identify and preserve abbreviations before title casing
+        # Pattern 1: All caps words (CV, NY, USA, API, etc.)
+        text = re.sub(r"\b([A-Z]{2,})\b", lambda m: f"__ABBREV_{m.group(1)}__", text)
+
+        # Pattern 2: Mixed case with numbers (B2B, iOS, etc.)
+        text = re.sub(
+            r"\b([A-Z][a-z]*[0-9][A-Za-z]*)\b",
+            lambda m: f"__ABBREV_{m.group(1)}__",
+            text,
+        )
+
+        # Pattern 3: Short all-caps words (AI, IT, HR, etc.)
+        text = re.sub(r"\b([A-Z]{2,3})\b", lambda m: f"__ABBREV_{m.group(1)}__", text)
+
+        # Now apply title case
+        result = text.title()
+
+        # Restore abbreviations (case-insensitive match)
+        result = re.sub(
+            r"__abbrev_([A-Za-z0-9]+)__",
+            lambda m: m.group(1).upper(),
+            result,
+            flags=re.IGNORECASE,
+        )
+
+        return result
 
     def _to_camel_case(self, text: str) -> str:
         """Convert to camelCase."""

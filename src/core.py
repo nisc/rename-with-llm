@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from rich.console import Console
+
+from .constants import MAX_FILENAME_LENGTH
+
 try:
     import yaml
 
@@ -118,12 +122,13 @@ class NamingEngine(ABC):
     """Base class for naming engines."""
 
     @abstractmethod
-    def generate_names(
+    async def generate_names(
         self,
         analysis: FileAnalysis,
         count: int,
         case_format: str,
         include_summary: bool,
+        max_chars: int = MAX_FILENAME_LENGTH,
     ) -> NamingResult:
         """Generate filename suggestions."""
         pass
@@ -168,8 +173,6 @@ def format_api_error(error: Exception) -> str:
                     error_data = json.loads(json_part)
 
                 # Use rich's built-in JSON formatting
-                from rich.console import Console
-
                 console = Console()
                 with console.capture() as capture:
                     console.print_json(json.dumps(error_data))
