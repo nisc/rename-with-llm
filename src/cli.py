@@ -5,10 +5,22 @@ from pathlib import Path
 from typing import Any
 
 import click
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, IntPrompt
 
+from .constants import (
+    CASE_FORMATS,
+    DEFAULT_CASE,
+    DEFAULT_CONFIG_FILE,
+    DEFAULT_COUNT,
+    DEFAULT_MODEL,
+    ENV_OPENAI_API_KEY,
+    ENV_OPENAI_MODEL,
+    MAX_CHARS_DEFAULT,
+    OPENAI_MODELS,
+)
 from .core import Config, FileAnalysis, format_api_error
 from .detectors import (
     CompositeDetector,
@@ -28,6 +40,9 @@ from .extractors import (
 )
 from .naming import OpenAINamingEngine
 from .safety import FileSafetyChecker
+
+# Load environment variables from .env file
+load_dotenv()
 
 console = Console()
 
@@ -88,13 +103,13 @@ class AIRenameTool:
 
     def _setup_naming_engine(self) -> OpenAINamingEngine:
         """Setup naming engine."""
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv(ENV_OPENAI_API_KEY)
         if not api_key:
             raise click.ClickException(
-                "OPENAI_API_KEY environment variable is required"
+                f"{ENV_OPENAI_API_KEY} environment variable is required"
             )
 
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        model = os.getenv(ENV_OPENAI_MODEL, DEFAULT_MODEL)
 
         # Validate API key by making a test call
         try:
@@ -127,7 +142,7 @@ class AIRenameTool:
 
         # Extract content
         content = self.extractor.extract(
-            file_path, {"file_type": file_type, "max_chars": 1000}
+            file_path, {"file_type": file_type, "max_chars": MAX_CHARS_DEFAULT}
         )
 
         # Get file stats
@@ -222,34 +237,25 @@ class AIRenameTool:
 
 @click.command()
 @click.argument("files", nargs=-1, type=click.Path(exists=True))
-@click.option("--count", "-c", default=3, help="Number of filename suggestions")
+@click.option(
+    "--count", "-c", default=DEFAULT_COUNT, help="Number of filename suggestions"
+)
 @click.option(
     "--case",
-    default="snake_case",
-    type=click.Choice(
-        [
-            "snake_case",
-            "Title Case",
-            "camelCase",
-            "kebab-case",
-            "UPPER_CASE",
-            "lower case",
-            "no caps",
-            "PascalCase",
-        ]
-    ),
+    default=DEFAULT_CASE,
+    type=click.Choice(CASE_FORMATS),
     help="Case format for filenames",
 )
 @click.option("--summary", "-s", is_flag=True, help="Include file summary")
 @click.option("--dry-run", "-d", is_flag=True, help="Preview without renaming")
 @click.option(
     "--model",
-    default="gpt-4o-mini",
-    type=click.Choice(["gpt-4o-mini", "gpt-3.5-turbo", "gpt-4"]),
+    default=DEFAULT_MODEL,
+    type=click.Choice(list(OPENAI_MODELS.values())),
     help="OpenAI model to use",
 )
 @click.option("--date-prefix", is_flag=True, help="Add date prefix to filenames")
-@click.option("--config", default="config.yaml", help="Configuration file path")
+@click.option("--config", default=DEFAULT_CONFIG_FILE, help="Configuration file path")
 def main(files, count, case, summary, dry_run, model, date_prefix, config):
     """AI-powered file renaming tool with content analysis."""
 

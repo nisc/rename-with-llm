@@ -34,6 +34,7 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
+from .constants import MAX_CHARS_DEFAULT
 from .core import Content, ContentExtractor, FileType
 
 
@@ -70,7 +71,7 @@ class PDFExtractor(ContentExtractor):
                 page_count = len(reader.pages)
 
                 # Limit content based on config
-                max_chars = config.get("max_chars", 1000)
+                max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
                 content_text = first_page[:max_chars]
 
                 return Content(
@@ -136,7 +137,7 @@ class DOCXExtractor(ContentExtractor):
             }
 
             # Limit content based on config
-            max_chars = config.get("max_chars", 1000)
+            max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
             content_text = content_text[:max_chars]
 
             return Content(
@@ -189,7 +190,7 @@ class CodeExtractor(ContentExtractor):
                 summary_parts.append(f"Comments: {comments[0][:100]}...")
 
             # Limit content based on config
-            max_chars = config.get("max_chars", 1000)
+            max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
             content_text = content[:max_chars]
 
             return Content(
@@ -345,7 +346,7 @@ class TextExtractor(ContentExtractor):
             metadata = self._extract_metadata(content, specific_type)
 
             # Limit content based on config
-            max_chars = config.get("max_chars", 1000)
+            max_chars = config.get("max_chars", MAX_CHARS_DEFAULT)
             content_text = content[:max_chars]
 
             return Content(

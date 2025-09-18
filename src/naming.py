@@ -4,6 +4,7 @@ import re
 
 import openai
 
+from .constants import DEFAULT_MODEL, MODEL_PRICING, OPENAI_MODELS
 from .core import (
     CaseFormatter,
     FileAnalysis,
@@ -16,7 +17,7 @@ from .core import (
 class OpenAINamingEngine(NamingEngine):
     """OpenAI-based naming engine."""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
         self.case_formatter = CaseFormatterImpl()
@@ -189,13 +190,9 @@ Return format:
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """Calculate API cost."""
-        costs = {
-            "gpt-4o-mini": (0.00015, 0.0006),
-            "gpt-3.5-turbo": (0.0015, 0.002),
-            "gpt-4": (0.03, 0.06),
-        }
-
-        input_cost, output_cost = costs.get(self.model, (0.00015, 0.0006))
+        input_cost, output_cost = MODEL_PRICING.get(
+            self.model, MODEL_PRICING[OPENAI_MODELS["GPT_4_1_NANO"]]
+        )
         return (input_tokens * input_cost + output_tokens * output_cost) / 1000
 
 

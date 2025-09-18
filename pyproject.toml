@@ -21,6 +21,7 @@ dependencies = [
     "pytesseract>=0.3.10",
     "python-magic>=0.4.27",
     "PyYAML>=6.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
