@@ -1,9 +1,4 @@
-"""
-RenameWithLLM
-
-A smart file renaming tool that uses LLMs to suggest descriptive filenames
-based on file content analysis.
-"""
+"""RenameWithLLM - A smart file renaming tool using LLMs for descriptive filenames."""
 
 from .core import format_api_error
 

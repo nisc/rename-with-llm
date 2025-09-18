@@ -1,6 +1,4 @@
-"""
-Content extraction implementations for different file types.
-"""
+"""Content extraction implementations for different file types."""
 
 try:
     import pypdf

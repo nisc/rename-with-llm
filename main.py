@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""
-RenameWithLLM
-
-A smart file renaming tool that uses LLM to suggest descriptive filenames
-based on file content analysis.
-"""
+"""RenameWithLLM - A smart file renaming tool using LLM for descriptive filenames."""
 
 from src.cli import main
 

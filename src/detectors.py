@@ -1,6 +1,4 @@
-"""
-File type detection implementations.
-"""
+"""File type detection implementations."""
 
 try:
     import magic

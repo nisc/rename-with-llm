@@ -1,6 +1,4 @@
-"""
-Safety checks and file operation safeguards.
-"""
+"""Safety checks and file operation safeguards."""
 
 from datetime import datetime
 import os

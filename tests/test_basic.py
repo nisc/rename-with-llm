@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Basic test script for RenameWithLLM.
-"""
+"""Basic test script for RenameWithLLM."""
 
 from pathlib import Path
 import tempfile

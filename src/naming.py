@@ -1,6 +1,4 @@
-"""
-Naming engine and case formatting implementations.
-"""
+"""Naming engine and case formatting implementations."""
 
 import re
 

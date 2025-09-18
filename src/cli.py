@@ -1,6 +1,4 @@
-"""
-Command-line interface for the AI file rename tool.
-"""
+"""Command-line interface for the AI file rename tool."""
 
 import os
 from pathlib import Path

@@ -1,6 +1,4 @@
-"""
-Core interfaces and base classes for the AI file rename tool.
-"""
+"""Core interfaces and base classes for the AI file rename tool."""
 
 from abc import ABC, abstractmethod
 import ast
