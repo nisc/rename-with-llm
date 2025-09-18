@@ -156,6 +156,21 @@ def format_api_error(error: Exception) -> str:
     """Format OpenAI API errors in a readable way using rich."""
     error_str = str(error)
 
+    # Check for rate limit errors and provide user-friendly message
+    if "rate_limit_exceeded" in error_str or "Rate limit reached" in error_str:
+        if "requests per day" in error_str or "RPD" in error_str:
+            return (
+                "Rate limit exceeded: Daily request limit reached. "
+                "Please try again tomorrow or upgrade your OpenAI plan."
+            )
+        elif "requests per min" in error_str or "RPM" in error_str:
+            return (
+                "Rate limit exceeded: Too many requests per minute. "
+                "Please wait a moment and try again."
+            )
+        else:
+            return "Rate limit exceeded. Please wait and try again."
+
     # Try to extract and pretty-print JSON from the error
     if "{" in error_str and "error" in error_str:
         try:

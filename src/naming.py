@@ -164,9 +164,18 @@ Current filename: {current_name}
 Suggest {count} filenames that are:
 - Descriptive of the main content
 - Professional and clear
+- Use Title Case formatting with proper capitalization for abbreviations
+  (CV, NY, AI, etc.)
 - Vary in length: include some short names (10-20 chars), some medium
   (20-{max_chars // 2} chars), and some longer names
   ({max_chars // 2}-{max_chars} chars)
+
+IMPORTANT: Use proper capitalization for abbreviations:
+- CV (not Cv)
+- NY (not Ny)
+- AI (not Ai)
+- API (not Api)
+- PDF (not Pdf)
 
 Return format:
 1. filename1
@@ -200,15 +209,27 @@ Return format:
             suggestions_text = response
 
         # Parse suggestions
-        for line in suggestions_text.split("\n"):
+        lines = suggestions_text.split("\n")
+        suggestion_started = False
+
+        for line in lines:
             line = line.strip()
             if line and (
                 line[0].isdigit() or line.startswith("-") or line.startswith("*")
             ):
+                suggestion_started = True
                 # Remove numbering
                 suggestion = re.sub(r"^[\d\.\-\*\s]+", "", line).strip()
                 if suggestion:
                     suggestions.append(suggestion)
+            elif (
+                not suggestion_started
+                and line
+                and not line.startswith("Current filename:")
+            ):
+                # This might be the summary if we haven't started suggestions yet
+                if include_summary and not summary:
+                    summary = line
 
         return suggestions, summary
 
@@ -264,33 +285,19 @@ class CaseFormatterImpl(CaseFormatter):
 
     def _to_title_case(self, text: str) -> str:
         """Convert to Title Case with simple abbreviation handling."""
-        # Convert underscores to spaces first for proper Title Case
-        text = text.replace("_", " ")
+        # Convert underscores to spaces and clean up whitespace in one step
+        text = re.sub(r"[_\s]+", " ", text).strip()
 
-        # First, identify and preserve abbreviations before title casing
-        # Pattern 1: All caps words (CV, NY, USA, API, etc.)
-        text = re.sub(r"\b([A-Z]{2,})\b", lambda m: f"__ABBREV_{m.group(1)}__", text)
-
-        # Pattern 2: Mixed case with numbers (B2B, iOS, etc.)
-        text = re.sub(
-            r"\b([A-Z][a-z]*[0-9][A-Za-z]*)\b",
-            lambda m: f"__ABBREV_{m.group(1)}__",
-            text,
-        )
-
-        # Pattern 3: Short all-caps words (AI, IT, HR, etc.)
-        text = re.sub(r"\b([A-Z]{2,3})\b", lambda m: f"__ABBREV_{m.group(1)}__", text)
-
-        # Now apply title case
-        result = text.title()
-
-        # Restore abbreviations (case-insensitive match)
-        result = re.sub(
-            r"__abbrev_([A-Za-z0-9]+)__",
-            lambda m: m.group(1).upper(),
-            result,
-            flags=re.IGNORECASE,
-        )
+        # Check if the text already has proper Title Case formatting
+        # (contains uppercase abbreviations like CV, NY, AI)
+        if re.search(r"\b[A-Z]{2,}\b", text):
+            # Text already has proper formatting, just clean up spaces
+            result = re.sub(r"\s+", " ", text).strip()
+        else:
+            # Apply title case
+            result = text.title()
+            # Clean up any multiple spaces that might have been introduced
+            result = re.sub(r"\s+", " ", result).strip()
 
         return result
 

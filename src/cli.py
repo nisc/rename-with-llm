@@ -155,7 +155,7 @@ class AIRenameTool:
         file_paths: list[Path],
         count: int,
         case_format: str,
-        include_summary: bool,
+        summary: bool,
         dry_run: bool,
     ) -> list[dict[str, Any]]:
         """Process multiple files asynchronously for better performance."""
@@ -169,7 +169,7 @@ class AIRenameTool:
 
                 # Generate names asynchronously
                 naming_result = await self.naming_engine.generate_names(
-                    analysis, count, case_format, include_summary, self.max_chars
+                    analysis, count, case_format, summary, self.max_chars
                 )
 
                 return {
@@ -244,10 +244,18 @@ class AIRenameTool:
         date_prefix: bool,
     ):
         """Display results and let user choose filenames immediately."""
-        successful_results = [r for r in results if r["success"]]
+        successful_results = [r for r in results if r.get("success", False)]
+        failed_results = [r for r in results if not r.get("success", False)]
 
         if not successful_results:
-            console.print("[red]No files to rename[/red]")
+            if failed_results:
+                console.print("[red]Failed to process files:[/red]")
+                for result in failed_results:
+                    file_path = result["file_path"]
+                    error = result.get("error", "Unknown error")
+                    console.print(f"  [red]{file_path.name}: {error}[/red]")
+            else:
+                console.print("[red]No files to rename[/red]")
             return
 
         # Process each file immediately
@@ -258,6 +266,10 @@ class AIRenameTool:
             # Display file info
             console.print(f"\n[bold]File: {file_path.name}[/bold]")
 
+            # Display summary if requested
+            if include_summary and naming_result.summary:
+                console.print(f"[dim]Summary: {naming_result.summary}[/dim]")
+
             # Display suggestions
             console.print("Suggestions:")
             original_extension = file_path.suffix
@@ -266,21 +278,30 @@ class AIRenameTool:
                 highlight=False,
             )
             for i, suggestion in enumerate(naming_result.suggestions, 1):
+                # Add date prefix if requested
+                if date_prefix:
+                    from datetime import datetime
+
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    suggestion = f"{date_str}_{suggestion}"
+
                 suggestion_with_extension = f"{suggestion}{original_extension}"
                 console.print(
                     f"  [bold cyan]{i}.[/bold cyan] {suggestion_with_extension}",
                     highlight=False,
                 )
 
-            # Display summary if requested
-            if include_summary and naming_result.summary:
-                console.print(f"\n[dim]Summary: {naming_result.summary}[/dim]")
+            # Add custom input option as the last option
+            custom_option_number = len(naming_result.suggestions) + 1
+            console.print(
+                f"  [bold cyan]{custom_option_number}.[/bold cyan] Enter custom name",
+                highlight=False,
+            )
 
             # Ask for choice immediately
             if not dry_run:
                 choice = IntPrompt.ask(
-                    f"Choose filename for {file_path.name} "
-                    f"(0-{len(naming_result.suggestions)})",
+                    f"Choose filename for {file_path.name} (0-{custom_option_number})",
                     default=0,
                 )
 
@@ -291,7 +312,17 @@ class AIRenameTool:
                     )
                 elif 1 <= choice <= len(naming_result.suggestions):
                     new_name = naming_result.suggestions[choice - 1]
+                elif choice == custom_option_number:
+                    # Custom input option
+                    from rich.prompt import Prompt
 
+                    new_name = Prompt.ask("Enter custom filename (without extension)")
+                else:
+                    console.print(f"[red]Invalid choice: {choice}[/red]")
+                    continue
+
+                # Process the rename if not keeping current
+                if choice != 0:
                     # Add date prefix if requested
                     if date_prefix:
                         from datetime import datetime
@@ -355,6 +386,9 @@ class AIRenameTool:
 @click.option("--date-prefix", is_flag=True, help="Add date prefix to filenames")
 @click.option("--verbose", "-v", is_flag=True, help="Show the prompt sent to OpenAI")
 @click.option(
+    "--yes", "-y", is_flag=True, help="Auto-confirm the cost estimation prompt"
+)
+@click.option(
     "--max-chars",
     default=MAX_FILENAME_LENGTH,
     type=int,
@@ -368,7 +402,17 @@ class AIRenameTool:
     help=f"Configuration file path [default: {DEFAULT_CONFIG_FILE}]",
 )
 def main(
-    files, count, case, summary, dry_run, model, date_prefix, verbose, max_chars, config
+    files,
+    count,
+    case,
+    summary,
+    dry_run,
+    model,
+    date_prefix,
+    verbose,
+    yes,
+    max_chars,
+    config,
 ):
     """AI-powered file renaming tool with content analysis."""
 
@@ -427,7 +471,7 @@ def main(
         from rich.prompt import Confirm
 
         mode_text = "dry-run preview" if dry_run else "processing"
-        if not Confirm.ask(f"Proceed with {mode_text}?", default=True):
+        if not yes and not Confirm.ask(f"Proceed with {mode_text}?", default=True):
             console.print("Operation cancelled")
             return
 
