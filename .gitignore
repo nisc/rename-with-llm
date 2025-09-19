@@ -37,3 +37,4 @@ test_files/
 sample_files/
 .env
 *.log
+*.docx
